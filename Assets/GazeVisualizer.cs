@@ -4,22 +4,18 @@ using UnityEngine;
 using ViveSR.anipal.Eye;
 using System.Runtime.InteropServices;
 
-public class TestEyeData : MonoBehaviour
+public class GazeVisualizer : MonoBehaviour
 {
     private static EyeData eyeData = new EyeData();
-    public Camera cam;
-    //
-    public Vector2Int FocusPoint;
-    private bool eye_callback_registered = false;
-    
-    
+    private Camera cam;
+    private bool eye_callback_registered = false;       
 
 
     // Start is called before the first frame update
     void Start()
     {
+        // get the main camera for later transformations
         cam = GameObject.Find("Main Camera").GetComponent<Camera>();
-        // SRanipal_Eye_API.LaunchEyeCalibration(new System.IntPtr());
     }
 
     // Update is called once per frame
@@ -29,6 +25,7 @@ public class TestEyeData : MonoBehaviour
         FocusInfo _info;
         Vector3 gazeOriginLocal, gazeDirectionLocal, gazeOriginWorld, gazeDirectionWorld;
 
+        // Make sure the Framwork is working
         if (SRanipal_Eye_Framework.Status != SRanipal_Eye_Framework.FrameworkStatus.WORKING &&
                        SRanipal_Eye_Framework.Status != SRanipal_Eye_Framework.FrameworkStatus.NOT_SUPPORT) return;
 
@@ -54,19 +51,15 @@ public class TestEyeData : MonoBehaviour
             // SRanipal_Eye.Focus(GazeIndex.COMBINE, out _ray, out _info);
             SRanipal_Eye.GetGazeRay(GazeIndex.COMBINE, out gazeOriginLocal, out gazeDirectionLocal);
         }
-        // Debug.Log(cam.WorldToScreenPoint(_info.point, Camera.MonoOrStereoscopicEye.Mono));
 
+        // Transform the gaze Ray to World Space
         gazeOriginWorld = cam.transform.TransformPoint(gazeOriginLocal);
         gazeDirectionWorld = cam.transform.TransformDirection(gazeDirectionLocal);
 
+        // Set the Position of the visualzier accordingly to the view
         SetPositionAndScale(gazeOriginWorld, gazeDirectionWorld);
-        // SetPositionAndScale(_ray);
-
-        Debug.DrawRay(gazeOriginWorld, gazeDirectionWorld, Color.red);
-        
-        // Debug.Log(_ray.origin + " " + _ray.direction);
-        
-        //Debug.Log(ray_origin.ToString() + "" + ray_direction.ToString());
+        // Visualize gaze Ray in Unity
+        Debug.DrawRay(gazeOriginWorld, gazeDirectionWorld * 10f, Color.red);
                
     }
     private void SetPositionAndScale(Ray ray)

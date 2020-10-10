@@ -63,7 +63,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\TestEyeData.cs" />
+    <Compile Include="Assets\GazeVisualizer.cs" />
     <Compile Include="Assets\TobiiXR\Examples\DataTransparency_Example\DataTransparencyPopup.cs" />
     <Compile Include="Assets\TobiiXR\Examples\DataTransparency_Example\PulsateColor.cs" />
     <Compile Include="Assets\TobiiXR\Examples\HandEyeCoordination_Example\Plugins\Tobii.HEC.Interop.cs" />
