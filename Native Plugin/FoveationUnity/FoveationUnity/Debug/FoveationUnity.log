@@ -1,0 +1,4 @@
+﻿  dllmain.cpp
+     Bibliothek "C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\Debug\FoveationUnity.lib" und Objekt "C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\Debug\FoveationUnity.exp" werden erstellt.
+dllmain.obj : error LNK2019: Verweis auf nicht aufgelöstes externes Symbol "_NvAPI_D3D1x_GetGraphicsCapabilities" in Funktion "_VrsSupported".
+C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\Debug\FoveationUnity.dll : fatal error LNK1120: 1 nicht aufgelöste Externe
