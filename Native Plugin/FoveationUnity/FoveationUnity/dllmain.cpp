@@ -15,6 +15,7 @@ extern "C" {
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces);
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload();
 	bool UNITY_INTERFACE_EXPORT VrsSupported();
+	int UNITY_INTERFACE_EXPORT test();
 }
 
 // Interne Funktionen
@@ -52,23 +53,30 @@ void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType
 		{
 			if (g_unityInterfaces) {
 				g_device = g_unityInterfaces->Get<IUnityGraphicsD3D11>()->GetDevice();
-				// initialize nv api
+				// NvAPI initialisieren lassen
+				// Funktionen geben auch NvAPI_STatus zurück evt auffangen.
+				// check für NvAPI_Status::NVAPI_OK
+				NvAPI_Initialize();
+				NvAPI_D3D_RegisterDevice(g_device);
 			}
 			break;
 		}
 		case kUnityGfxDeviceEventShutdown:
 		{
-			// hier dann wieder nv api rausladen
+			
+			NvAPI_Unload();
 			break;
 		}
 	}
 }
-
+// Just a testing function
+int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API test() {
+	return 6;
+}
 
 // Test ob VRS verfügbar ist.
 bool VrsSupported() {
-	NV_D3D1x_GRAPHICS_CAPS caps;
-	memset(&caps, 0, sizeof(NV_D3D1x_GRAPHICS_CAPS));
+	NV_D3D1x_GRAPHICS_CAPS caps = { 0 };
 
 	NvAPI_Status NvStatus = NvAPI_D3D1x_GetGraphicsCapabilities(g_device, NV_D3D1x_GRAPHICS_CAPS_VER, &caps);
 	if (NvStatus == NVAPI_OK) {
