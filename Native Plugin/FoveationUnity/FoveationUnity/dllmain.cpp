@@ -4,9 +4,12 @@
 #include <IUnityGraphics.h>
 #include <IUnityGraphicsD3D11.h> // Warum genau brauche ich das doch gleich?
 #include <nvapi.h>
-#include <vector>
 #include <SetupAPI.h> // warum brauche ich das hier?
 #include <string>
+#include <vector>
+
+using namespace std;
+
 
 // Damit es im Plugin später keine Dopplungen der Funktionnamen gibt, die Funktionen sind weiter unten zu finden.
 extern "C" {
@@ -27,6 +30,7 @@ extern "C" {
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventype);
 static bool UNITY_INTERFACE_API InitVrsHelper();
 static bool UNITY_INTERFACE_API EnableVrsHelpers();
+static bool UNITY_INTERFACE_API InitGazeHandler(float hFov = 110.0, float vFov = 110.0);
 
 // Variablen 
 // g_ für global Variablen
@@ -34,6 +38,8 @@ static IUnityInterfaces* g_unityInterfaces = nullptr;
 static IUnityGraphics* g_graphics = nullptr;
 static ID3D11Device* g_device = nullptr;
 static ID3DNvVRSHelper* g_vrsHelper = nullptr;
+static ID3DNvGazeHandler* g_gazeHandler = nullptr;
+
 
 // Implementierung der externen Funktionen
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces) {
@@ -71,7 +77,13 @@ bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation() {
 	if (!EnableVrsHelpers()) {
 		return false;
 	}
+	if (!InitGazeHandler()) {
+		return false;
+	}
 	return true;
+}
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UpdateGazeData()  {
+	// structs für Vektoren?
 }
 // Just a testing function
 int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test() {
@@ -127,6 +139,10 @@ static bool EnableVrsHelpers() {
 	enableParams.version = NV_VRS_HELPER_ENABLE_PARAMS_VER;
 	enableParams.ContentType = NV_VRS_CONTENT_TYPE_FOVEATED_RENDERING;
 	enableParams.RenderMode = NV_VRS_RENDER_MODE_MONO;
+	// Hier gibt es mehrere presets, man kann die Bereiche aber auch anpassen... NicetoHave & Leicht zu machen
+	enableParams.sFoveatedRenderingDesc.version = NV_FOVEATED_RENDERING_DESC_VER;	
+	enableParams.sFoveatedRenderingDesc.ShadingRatePreset = NV_FOVEATED_RENDERING_SHADING_RATE_PRESET_HIGHEST_PERFORMANCE;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_BALANCED;
 
 	NvAPI_Status NvStatus = g_vrsHelper->Enable(ctx, &enableParams);
 	if (NvStatus == NVAPI_OK) {
@@ -135,6 +151,25 @@ static bool EnableVrsHelpers() {
 	else {
 		return false;
 	}
+}
+static bool InitGazeHandler(float hFov = 110.0, float vFov = 110.0) {
+	NV_GAZE_HANDLER_INIT_PARAMS gazeHandlerInitParams = {};
+	gazeHandlerInitParams.version = NV_GAZE_HANDLER_INIT_PARAMS_VER;
+
+	// Momentan unterstütz die API nur ein Gerät, es ist aber schon möglich mehrere IDs zu vergeben.
+	gazeHandlerInitParams.GazeDataDeviceId = 0;
+	gazeHandlerInitParams.GazeDataType = NV_GAZE_DATA_STEREO;
+	gazeHandlerInitParams.fHorizontalFOV = hFov;
+	gazeHandlerInitParams.fVericalFOV = vFov;
+	gazeHandlerInitParams.ppNvGazeHandler = &g_gazeHandler;
+
+	NvAPI_Status NvStatus = NvAPI_D3D_InitializeNvGazeHandler(g_device, &gazeHandlerInitParams);
+	if (NvStatus) {
+		return true;
+	}
+	else {
+		return false;
+	}	
 }
 
 /*
