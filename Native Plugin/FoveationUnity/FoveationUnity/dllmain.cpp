@@ -11,26 +11,41 @@
 using namespace std;
 
 
+//Structs sind etwas leichter als direkt eine ganze Mathebibliothek
+struct Vec3f {
+	float x;
+	float y;
+	float z;
+};
+
 // Damit es im Plugin später keine Dopplungen der Funktionnamen gibt, die Funktionen sind weiter unten zu finden.
 extern "C" {
-
+	// Nötig als Einstiegs und Ausstiegspunkt für Unity Plugins, sowie das einhängen von Funktionen in den Renderprozess zu beliebiger Stelle:
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces);
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload();
+	UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc();
 	// VRS 
 	bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API VrsSupported();
-	bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation();
-	
-	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UpdateGazeData();
+	bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation();	
 
-	// Testing 
+	// Eigene
+	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f rightEye);
+	
+	// Testing, gibt 6 zurück
 	int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test();
 }
 
 // Interne Funktionen
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventype);
-static bool UNITY_INTERFACE_API InitVrsHelper();
-static bool UNITY_INTERFACE_API EnableVrsHelpers();
-static bool UNITY_INTERFACE_API InitGazeHandler(float hFov = 110.0, float vFov = 110.0);
+static void UNITY_INTERFACE_API OnRenderEvent(int eventID);
+
+static bool InitVrsHelper();
+static bool EnableVrsHelpers();
+static bool DisableVrsHelpers();
+static bool InitGazeHandler();
+static bool UpdateGazeData();
+static bool LatchGaze();
+
 
 // Variablen 
 // g_ für global Variablen
@@ -39,7 +54,11 @@ static IUnityGraphics* g_graphics = nullptr;
 static ID3D11Device* g_device = nullptr;
 static ID3DNvVRSHelper* g_vrsHelper = nullptr;
 static ID3DNvGazeHandler* g_gazeHandler = nullptr;
+static ID3D11DeviceContext* g_deviceContext = nullptr;
 
+// gazeData - normalisierten Blickrichtung
+static Vec3f g_leftEye = { 0.0f, 0.0f, 0.0f };
+static Vec3f g_rightEye = { 0.0f, 0.0f, 0.0f };
 
 // Implementierung der externen Funktionen
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces) {
@@ -56,6 +75,10 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 	g_unityInterfaces = nullptr;
 	g_graphics = nullptr;
 	g_device = nullptr;
+	g_deviceContext = nullptr;
+}
+UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc() {
+	return OnRenderEvent;
 }
 // Test ob VRS verfügbar ist.
 bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API VrsSupported() {
@@ -73,18 +96,17 @@ bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API VrsSupported() {
 bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation() {
 	if (!InitVrsHelper()) {
 		return false;
-	}
-	if (!EnableVrsHelpers()) {
-		return false;
-	}
+	}	
 	if (!InitGazeHandler()) {
 		return false;
 	}
 	return true;
 }
-void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UpdateGazeData()  {
-	// structs für Vektoren?
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f rightEye) {
+	g_leftEye = leftEye;
+	g_rightEye = rightEye;
 }
+// Nutzt normalisierte Vectoren, relativ zur Kamera.
 // Just a testing function
 int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test() {
 	return 6;
@@ -93,7 +115,7 @@ int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test() {
 // Implementierung der internen Funktionen
 
 // Laut Unity Doku ist das der Way-to-go um an das Device zu kommen.
-void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
+static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
 
 	switch (eventType)
 	{
@@ -117,6 +139,33 @@ void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType
 	}
 	}
 }
+static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
+	/* Laut NvAPi Doku muss hier folgendes passieren:
+		0 Update Gaze Data (wenn es im selben Frame passiert, was wir tun) + Latch the Gaze
+		1 Enable VRS Helper
+		- perform draw calls (Ich denke das macht Unity)
+		3 Disable VRS Helper
+
+	*/
+	// Device Context wird öfter benötigt daher als g_ variable
+	g_device->GetImmediateContext(&g_deviceContext);
+
+	switch (eventID) {
+	case 0:
+		if (UpdateGazeData()) {
+			LatchGaze();
+		}
+		break;
+	case 1:
+		EnableVrsHelpers();
+		break;
+	case 2:
+		DisableVrsHelpers();		
+	}
+
+
+
+}
 
 static bool InitVrsHelper() {
 	NV_VRS_HELPER_INIT_PARAMS vrsHelperInitParams = {};
@@ -132,9 +181,8 @@ static bool InitVrsHelper() {
 	}
 }
 static bool EnableVrsHelpers() {
-	ID3D11DeviceContext* ctx = {};
 
-	NV_VRS_HELPER_ENABLE_PARAMS enableParams;
+	NV_VRS_HELPER_ENABLE_PARAMS enableParams = {};
 
 	enableParams.version = NV_VRS_HELPER_ENABLE_PARAMS_VER;
 	enableParams.ContentType = NV_VRS_CONTENT_TYPE_FOVEATED_RENDERING;
@@ -144,7 +192,7 @@ static bool EnableVrsHelpers() {
 	enableParams.sFoveatedRenderingDesc.ShadingRatePreset = NV_FOVEATED_RENDERING_SHADING_RATE_PRESET_HIGHEST_PERFORMANCE;
 	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_BALANCED;
 
-	NvAPI_Status NvStatus = g_vrsHelper->Enable(ctx, &enableParams);
+	NvAPI_Status NvStatus = g_vrsHelper->Enable(g_deviceContext, &enableParams);
 	if (NvStatus == NVAPI_OK) {
 		return true;
 	}
@@ -152,15 +200,28 @@ static bool EnableVrsHelpers() {
 		return false;
 	}
 }
-static bool InitGazeHandler(float hFov = 110.0, float vFov = 110.0) {
+static bool DisableVrsHelpers() {
+	NV_VRS_HELPER_DISABLE_PARAMS disableParams = {};
+
+	disableParams.version = NV_VRS_HELPER_DISABLE_PARAMS_VER;
+	NvAPI_Status NvStatus = g_vrsHelper->Disable(g_deviceContext, &disableParams);
+
+	if (NvStatus == NVAPI_OK) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+static bool InitGazeHandler() {
 	NV_GAZE_HANDLER_INIT_PARAMS gazeHandlerInitParams = {};
 	gazeHandlerInitParams.version = NV_GAZE_HANDLER_INIT_PARAMS_VER;
 
 	// Momentan unterstütz die API nur ein Gerät, es ist aber schon möglich mehrere IDs zu vergeben.
 	gazeHandlerInitParams.GazeDataDeviceId = 0;
 	gazeHandlerInitParams.GazeDataType = NV_GAZE_DATA_STEREO;
-	gazeHandlerInitParams.fHorizontalFOV = hFov;
-	gazeHandlerInitParams.fVericalFOV = vFov;
+	gazeHandlerInitParams.fHorizontalFOV = 110.0f;
+	gazeHandlerInitParams.fVericalFOV = 110.0f;
 	gazeHandlerInitParams.ppNvGazeHandler = &g_gazeHandler;
 
 	NvAPI_Status NvStatus = NvAPI_D3D_InitializeNvGazeHandler(g_device, &gazeHandlerInitParams);
@@ -171,21 +232,51 @@ static bool InitGazeHandler(float hFov = 110.0, float vFov = 110.0) {
 		return false;
 	}	
 }
+static bool UpdateGazeData() {
+	// Wie lange läuft die Applikation? Wie schnell wird der Timestamp hochgezählt? Weil ich das nicht weiß, nehme ich den größten Unsigned Int Typ.
+	// Bis 18.446.744.073.709.551.615 sollte wohl erstmal reichen.
+	static unsigned long long gazeTimestamp = 0;
+	gazeTimestamp++;
+	NV_FOVEATED_RENDERING_UPDATE_GAZE_DATA_PARAMS gazeDataParams = {};
 
-/*
-BOOL APIENTRY DllMain( HMODULE hModule,
-                       DWORD  ul_reason_for_call,
-                       LPVOID lpReserved
-                     )
-{
-    switch (ul_reason_for_call)
-    {
-    case DLL_PROCESS_ATTACH:
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-    case DLL_PROCESS_DETACH:
-        break;
-    }
-    return TRUE;
+	gazeDataParams.version = NV_FOVEATED_RENDERING_UPDATE_GAZE_DATA_PARAMS_VER;
+	gazeDataParams.Timestamp = gazeTimestamp;
+
+	// rightEye
+	gazeDataParams.sStereoData.sRightEye.version = NV_FOVEATED_RENDERING_GAZE_DATA_PER_EYE_VER;
+	gazeDataParams.sStereoData.sRightEye.fGazeDirection[0] = g_rightEye.x;
+	gazeDataParams.sStereoData.sRightEye.fGazeDirection[1] = g_rightEye.y;
+	gazeDataParams.sStereoData.sRightEye.fGazeDirection[2] = g_rightEye.z;
+	gazeDataParams.sStereoData.sRightEye.GazeDataValidityFlags = NV_GAZE_DIRECTION_VALID;
+
+	//leftEye
+	gazeDataParams.sStereoData.sLeftEye.version = NV_FOVEATED_RENDERING_GAZE_DATA_PER_EYE_VER;
+	gazeDataParams.sStereoData.sLeftEye.fGazeDirection[0] = g_leftEye.x;
+	gazeDataParams.sStereoData.sLeftEye.fGazeDirection[1] = g_leftEye.y;
+	gazeDataParams.sStereoData.sLeftEye.fGazeDirection[2] = g_leftEye.z;
+	gazeDataParams.sStereoData.sLeftEye.GazeDataValidityFlags = NV_GAZE_DIRECTION_VALID;
+
+	// und and den GazeHandler "reichen"
+	NvAPI_Status NvStatus = g_gazeHandler->UpdateGazeData(g_deviceContext, &gazeDataParams);
+	if (NvStatus == NVAPI_OK) {
+		return true;
+	}
+	else {
+		return false;
+	}
 }
-*/
+static bool LatchGaze() {
+	NV_VRS_HELPER_LATCH_GAZE_PARAMS latchGazeParams = {};
+	latchGazeParams.version = NV_VRS_HELPER_ENABLE_PARAMS_VER;
+	NvAPI_Status NvStatus = g_vrsHelper->LatchGaze(g_deviceContext, &latchGazeParams);
+
+	if (NvStatus = NVAPI_OK) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+
+
