@@ -8,7 +8,7 @@ public class GazeVisualizer : MonoBehaviour
 {
     private static EyeData eyeData = new EyeData();
     private Camera cam;
-    private bool eye_callback_registered = false;       
+    private bool eye_callback_registered = false; 
 
 
     // Start is called before the first frame update
