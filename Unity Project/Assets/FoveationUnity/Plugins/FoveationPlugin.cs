@@ -22,7 +22,11 @@ public class FoveationPlugin : MonoBehaviour
     [DllImport(dll)]
     private static extern bool InitFoveation();
     [DllImport(dll)]
-    private static extern bool SetGazeData(Vector3 leftEye, Vector3 rightEye);
+    private static extern void SetGazeData(Vector3 leftEye, Vector3 rightEye);
+    [DllImport(dll)]
+    private static extern void SetShadingRate(ShadingRate inner, ShadingRate middle, ShadingRate outer);
+    [DllImport(dll)]
+    private static extern void SetShadingRadii(Vector2 inner, Vector2 middle, Vector2 outer);
     [DllImport(dll)]
     private static extern int Test();
     [DllImport(dll)]
@@ -37,10 +41,40 @@ public class FoveationPlugin : MonoBehaviour
         disableFoveation
     };
 
+    //Enum für die Shading Rate
+    protected enum ShadingRate
+    {
+        NV_PIXEL_X0_CULL_RASTER_PIXELS,         // No shading, tiles are culled
+        NV_PIXEL_X16_PER_RASTER_PIXEL,          // 16 shading passes per 1 raster pixel
+        NV_PIXEL_X8_PER_RASTER_PIXEL,           //  8 shading passes per 1 raster pixel
+        NV_PIXEL_X4_PER_RASTER_PIXEL,           //  4 shading passes per 1 raster pixel
+        NV_PIXEL_X2_PER_RASTER_PIXEL,           //  2 shading passes per 1 raster pixel
+        NV_PIXEL_X1_PER_RASTER_PIXEL,           //  Per-pixel shading
+        NV_PIXEL_X1_PER_2X1_RASTER_PIXELS,      //  1 shading pass per  2 raster pixels
+        NV_PIXEL_X1_PER_1X2_RASTER_PIXELS,      //  1 shading pass per  2 raster pixels
+        NV_PIXEL_X1_PER_2X2_RASTER_PIXELS,      //  1 shading pass per  4 raster pixels
+        NV_PIXEL_X1_PER_4X2_RASTER_PIXELS,      //  1 shading pass per  8 raster pixels
+        NV_PIXEL_X1_PER_2X4_RASTER_PIXELS,      //  1 shading pass per  8 raster pixels
+        NV_PIXEL_X1_PER_4X4_RASTER_PIXELS       //  1 shading pass per 16 raster pixels
+
+    };
+
     private Camera MainCamera;
 
-    bool foveationIsActive = false;
+    // Einstellungen:
+    [SerializeField]
+    private ShadingRate innerShadingRate = ShadingRate.NV_PIXEL_X1_PER_RASTER_PIXEL;
+    [SerializeField]
+    private ShadingRate middleShadingRate = ShadingRate.NV_PIXEL_X1_PER_2X2_RASTER_PIXELS;
+    [SerializeField]
+    private ShadingRate outerShadingRate = ShadingRate.NV_PIXEL_X1_PER_4X4_RASTER_PIXELS;
 
+    [SerializeField]
+    private Vector2 innerRadii = new Vector2(0.35f, 0.25f);
+    [SerializeField]
+    private Vector2 middleRadii = new Vector2(0.7f, 0.5f);
+    [SerializeField]
+    private Vector2 outerRadii = new Vector2(5.0f, 5.0f);
 
 
     // Wird aufgerufen sobald das Script aktiviert wird (also schon deutlich vor start())
@@ -94,22 +128,15 @@ public class FoveationPlugin : MonoBehaviour
         {
             Debug.Log("Diese Plugin Unterstützt nur Forward oder Deffered Shading");
         }
-
-
-
-    }
-
-    // Start is called before the first frame update
-    void Start()
-    {                
-        //Debug.Log("Ergebnis ist : " + Test());
-        // Debug.Log("VRS wird unterstützt: " + VrsSupported());
+        SetShadingRate(innerShadingRate, middleShadingRate, outerShadingRate);
+        SetShadingRadii(innerRadii, middleRadii, outerRadii);
+        
 
     }
 
     // Update is called once per frame
     void Update()
-    {
+    {      
         SetGazeData(GazeProvider.gazeDirectionLocalLeft, GazeProvider.gazeDirectionLocalRight);
         GL.IssuePluginEvent(GetRenderEventFunc(), (int) FoveationEvent.updateGaze);
     }

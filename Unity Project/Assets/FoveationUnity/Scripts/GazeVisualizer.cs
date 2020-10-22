@@ -66,11 +66,11 @@ public class GazeVisualizer : MonoBehaviour
     private void SetPositionAndScale(Vector3 ray_origin, Vector3 ray_direction)
     {
         RaycastHit hit;
-        var distance = cam.farClipPlane - 900f;
-        if (Physics.Raycast(ray_origin, ray_direction, out hit))
+        var distance = cam.farClipPlane - 999f;
+        /*if (Physics.Raycast(ray_origin, ray_direction, out hit))
         {
             distance = hit.distance;
-        }
+        } */
 
         var usedDirection = ray_direction.normalized;
         transform.position = ray_origin + usedDirection * distance;

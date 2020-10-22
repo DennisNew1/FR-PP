@@ -5,6 +5,7 @@
 #include <IUnityGraphicsD3D11.h> // Warum genau brauche ich das doch gleich?
 #include <nvapi.h>
 #include <string>
+#include <math.h>
 
 using namespace std;
 
@@ -14,6 +15,11 @@ struct Vec3f {
 	float x;
 	float y;
 	float z;
+};
+
+struct Vec2f {
+	float x;
+	float y;
 };
 
 
@@ -34,6 +40,8 @@ extern "C" {
 
 	// Eigene
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f rightEye);
+	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetShadingRate(NV_PIXEL_SHADING_RATE inner, NV_PIXEL_SHADING_RATE middle, NV_PIXEL_SHADING_RATE outer);
+	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetShadingRadii(Vec2f inner, Vec2f middle, Vec2f outer);
 	
 	// Testing, gibt 6 zurück
 	int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test();
@@ -52,6 +60,7 @@ static bool InitGazeHandler();
 static bool UpdateGazeData();
 static bool LatchGaze();
 static void DebugInUnity(std::string message);
+static Vec2f Vec3toScreenSpace(Vec3f eyeDirection);
 
 
 // Variablen 
@@ -66,9 +75,25 @@ static ID3D11DeviceContext* g_deviceContext = nullptr;
 // gazeData - normalisierten Blickrichtung
 static Vec3f g_leftEye = { 0.0f, 0.0f, 0.0f };
 static Vec3f g_rightEye = { 0.0f, 0.0f, 0.0f };
+ 
+// gazeData - in Screenspace -0,5 bis +0,5 (NvApi benötigt das so)
+static Vec2f g_leftEyeScreen = { 0.0f, 0.0f };
+static Vec2f g_rightEyeScreen = { 0.0f, 0.0f };
 
 static bool g_nvapiInitialized = false;
 static bool g_deviceInitialized = false;
+
+// Benutzerdefinierte Shading rates - standard config:
+static NV_PIXEL_SHADING_RATE g_innerShadingRate = NV_PIXEL_X1_PER_RASTER_PIXEL;
+static NV_PIXEL_SHADING_RATE g_middleShadingRate = NV_PIXEL_X1_PER_2X2_RASTER_PIXELS;
+static NV_PIXEL_SHADING_RATE g_outerShadingRate = NV_PIXEL_X1_PER_4X4_RASTER_PIXELS;
+
+// Benutzerdefinierte Bereichsgrößen (vectoren sind es eigentlich nicht, aber das Datenmodell passt):
+static Vec2f g_innerRadii = { 0.35f, 0.25f };
+static Vec2f g_middleRadii = { 0.7f, 0.5f };
+static Vec2f g_outerRadii = { 5.0f, 5.0f };
+
+
 
 // Implementierung der externen Funktionen
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces) {
@@ -123,6 +148,19 @@ bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation() {
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f rightEye) {
 	g_leftEye = leftEye;
 	g_rightEye = rightEye;
+
+	g_leftEyeScreen = Vec3toScreenSpace(leftEye);
+	g_rightEyeScreen = Vec3toScreenSpace(rightEye);
+}
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetShadingRate(NV_PIXEL_SHADING_RATE inner, NV_PIXEL_SHADING_RATE middle, NV_PIXEL_SHADING_RATE outer) {
+	g_innerShadingRate = inner;
+	g_middleShadingRate = middle;
+	g_outerShadingRate = outer;
+}
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetShadingRadii(Vec2f inner, Vec2f middle, Vec2f outer) {
+	g_innerRadii = inner;
+	g_middleRadii = middle;
+	g_outerRadii = outer;
 }
 // Nutzt normalisierte Vectoren, relativ zur Kamera.
 // Just a testing function
@@ -230,11 +268,18 @@ static bool EnableVrsHelpers() {
 	// Custom oder preset
 	enableParams.sFoveatedRenderingDesc.ShadingRatePreset = NV_FOVEATED_RENDERING_SHADING_RATE_PRESET_CUSTOM;
 	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.version = NV_FOVEATED_RENDERING_CUSTOM_FOVEATION_PATTERN_PRESET_DESC_VER;
-	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.InnerMostRegionShadingRate = NV_PIXEL_X16_PER_RASTER_PIXEL;
-	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.MiddleRegionShadingRate = NV_PIXEL_X0_CULL_RASTER_PIXELS;
-	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.PeripheralRegionShadingRate = NV_PIXEL_X0_CULL_RASTER_PIXELS;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.InnerMostRegionShadingRate = g_innerShadingRate;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.MiddleRegionShadingRate = g_middleShadingRate;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.PeripheralRegionShadingRate = g_outerShadingRate;
 
-	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_NARROW;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_CUSTOM;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fInnermostRadii[0] = g_innerRadii.x;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fInnermostRadii[1] = g_innerRadii.y;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fMiddleRadii[0] = g_middleRadii.x;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fMiddleRadii[1] = g_middleRadii.y;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fPeripheralRadii[0] = g_outerRadii.x;
+	enableParams.sFoveatedRenderingDesc.FoveationPatternCustomPresetDesc.fPeripheralRadii[1] = g_outerRadii.y;
+
 
 	NvAPI_Status NvStatus = g_vrsHelper->Enable(g_deviceContext, &enableParams);
 	//if (g_deviceContext == nullptr) {
@@ -291,7 +336,7 @@ static bool UpdateGazeData() {
 
 	gazeDataParams.version = NV_FOVEATED_RENDERING_UPDATE_GAZE_DATA_PARAMS_VER;
 	gazeDataParams.Timestamp = gazeTimestamp;
-
+	/* Das weitergeben von Gazedirection scheint nicht zu gehen
 	// rightEye
 	gazeDataParams.sStereoData.sRightEye.version = NV_FOVEATED_RENDERING_GAZE_DATA_PER_EYE_VER;
 	gazeDataParams.sStereoData.sRightEye.fGazeDirection[0] = g_rightEye.x;
@@ -305,6 +350,18 @@ static bool UpdateGazeData() {
 	gazeDataParams.sStereoData.sLeftEye.fGazeDirection[1] = g_leftEye.y;
 	gazeDataParams.sStereoData.sLeftEye.fGazeDirection[2] = g_leftEye.z;
 	gazeDataParams.sStereoData.sLeftEye.GazeDataValidityFlags = NV_GAZE_DIRECTION_VALID;
+	*/
+
+	gazeDataParams.sStereoData.sLeftEye.version = NV_FOVEATED_RENDERING_GAZE_DATA_PER_EYE_VER;
+	gazeDataParams.sStereoData.sLeftEye.fGazeNormalizedLocation[0] = g_leftEyeScreen.x;
+	gazeDataParams.sStereoData.sLeftEye.fGazeNormalizedLocation[1] = g_leftEyeScreen.y;
+	gazeDataParams.sStereoData.sLeftEye.GazeDataValidityFlags = NV_GAZE_LOCATION_VALID;
+
+	gazeDataParams.sStereoData.sRightEye.version = NV_FOVEATED_RENDERING_GAZE_DATA_PER_EYE_VER;
+	gazeDataParams.sStereoData.sRightEye.fGazeNormalizedLocation[0] = g_rightEyeScreen.x;
+	gazeDataParams.sStereoData.sRightEye.fGazeNormalizedLocation[1] = g_rightEyeScreen.y;
+	gazeDataParams.sStereoData.sRightEye.GazeDataValidityFlags = NV_GAZE_LOCATION_VALID;
+
 
 	// und and den GazeHandler "reichen"
 	NvAPI_Status NvStatus = g_gazeHandler->UpdateGazeData(g_deviceContext, &gazeDataParams);
@@ -334,6 +391,16 @@ static void DebugInUnity(std::string message) {
 		g_debugCallback(message.c_str());
 	}
 }
+// Übernommen aus der Nvidia Doku => leicht abgeändert aufgrund von verschiedenen Coordinaten Systemen (left/righthanded)
+static Vec2f Vec3toScreenSpace(Vec3f eyeDirection) {
+	// Wert aus der NvApi Doku
+	const static float hFOV = 111.5129f;
+	float tanNormalized[2] = {
+		(-eyeDirection.x / eyeDirection.z) / tanf(hFOV / 2.0f),
+		(-eyeDirection.y / eyeDirection.z) / tanf(hFOV / 2.0f)
+	};
 
+	return { tanNormalized[0] / 2.0f, tanNormalized[1] / 2.0f };
+}
 
 

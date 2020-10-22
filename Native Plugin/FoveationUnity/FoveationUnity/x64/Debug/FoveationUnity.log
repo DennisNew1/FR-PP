@@ -1,3 +1,4 @@
-﻿  dllmain.cpp
+﻿C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\Microsoft.CppClean.targets(76,5): warning : Der Prozess kann nicht auf die Datei "c:\users\ami\desktop\fr kram\fr-pp\native plugin\foveationunity\foveationunity\x64\debug\vc142.idb" zugreifen, da sie von einem anderen Prozess verwendet wird.
+  dllmain.cpp
      Bibliothek "C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\x64\Debug\FoveationUnity.lib" und Objekt "C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\x64\Debug\FoveationUnity.exp" werden erstellt.
   FoveationUnity.vcxproj -> C:\Users\AMI\Desktop\FR Kram\FR-PP\Native Plugin\FoveationUnity\x64\Debug\FoveationUnity.dll
