@@ -52,6 +52,7 @@ public class GazeProvider : MonoBehaviour
             SRanipal_Eye.GetGazeRay(GazeIndex.LEFT, out gazeOrignLocalLeft, out gazeDirectionLocalLeft);
             SRanipal_Eye.GetGazeRay(GazeIndex.RIGHT, out gazeOrignLocalRight, out gazeDirectionLocalRight);
         }
+        // Debug.Log("Gaze gedöns: " + gazeDirectionLocalLeft);
     }
 
     private static void EyeCallback(ref EyeData eye_data)

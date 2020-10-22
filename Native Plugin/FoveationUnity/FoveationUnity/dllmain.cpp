@@ -4,9 +4,7 @@
 #include <IUnityGraphics.h>
 #include <IUnityGraphicsD3D11.h> // Warum genau brauche ich das doch gleich?
 #include <nvapi.h>
-#include <SetupAPI.h> // warum brauche ich das hier?
 #include <string>
-#include <vector>
 
 using namespace std;
 
@@ -17,6 +15,12 @@ struct Vec3f {
 	float y;
 	float z;
 };
+
+
+//Debug related
+typedef void(__stdcall* DebugCallback) (const char* str);
+DebugCallback g_debugCallback;
+
 
 // Damit es im Plugin später keine Dopplungen der Funktionnamen gibt, die Funktionen sind weiter unten zu finden.
 extern "C" {
@@ -33,6 +37,8 @@ extern "C" {
 	
 	// Testing, gibt 6 zurück
 	int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test();
+	// Debug
+	void UNITY_INTERFACE_EXPORT RegisterDebugCallback(DebugCallback callback);
 }
 
 // Interne Funktionen
@@ -45,6 +51,7 @@ static bool DisableVrsHelpers();
 static bool InitGazeHandler();
 static bool UpdateGazeData();
 static bool LatchGaze();
+static void DebugInUnity(std::string message);
 
 
 // Variablen 
@@ -60,6 +67,9 @@ static ID3D11DeviceContext* g_deviceContext = nullptr;
 static Vec3f g_leftEye = { 0.0f, 0.0f, 0.0f };
 static Vec3f g_rightEye = { 0.0f, 0.0f, 0.0f };
 
+static bool g_nvapiInitialized = false;
+static bool g_deviceInitialized = false;
+
 // Implementierung der externen Funktionen
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces) {
 	g_unityInterfaces = unityInterfaces;
@@ -68,6 +78,7 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces
 	g_graphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
 	
 	OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
+	DebugInUnity("Plugin Loaded");
 }
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 	g_graphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
@@ -87,19 +98,26 @@ bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API VrsSupported() {
 	NvAPI_Status NvStatus = NvAPI_D3D1x_GetGraphicsCapabilities(g_device, NV_D3D1x_GRAPHICS_CAPS_VER, &caps);
 	if (NvStatus == NVAPI_OK) {
 		// Vrs ist verfügbar
+		DebugInUnity("VRS is supported");
 		return true;
 	}
 	else {
+		DebugInUnity("VRS is not supported");
 		return false;
 	}
 }
 bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API InitFoveation() {
+	if (!g_nvapiInitialized || !g_deviceInitialized) {
+		DebugInUnity("Error: Initializatiion of NvApi or Device");
+	}
 	if (!InitVrsHelper()) {
+		DebugInUnity("Error: initialization of VrsHelpers");
 		return false;
 	}	
 	if (!InitGazeHandler()) {
+		DebugInUnity("Error: initialization of GazeHandler");
 		return false;
-	}
+	}	
 	return true;
 }
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f rightEye) {
@@ -111,6 +129,11 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetGazeData(Vec3f leftEye, Vec3f
 int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API Test() {
 	return 6;
 }
+void UNITY_INTERFACE_EXPORT RegisterDebugCallback(DebugCallback callback) {
+	if (callback) {
+		g_debugCallback = callback;
+	}
+}
 
 // Implementierung der internen Funktionen
 
@@ -120,23 +143,33 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 	switch (eventType)
 	{
 	case kUnityGfxDeviceEventInitialize:
-	{
 		if (g_unityInterfaces) {
 			g_device = g_unityInterfaces->Get<IUnityGraphicsD3D11>()->GetDevice();
-			// NvAPI initialisieren lassen
-			// Funktionen geben auch NvAPI_STatus zurück evt auffangen.
-			// check für NvAPI_Status::NVAPI_OK
-			NvAPI_Initialize();
-			NvAPI_D3D_RegisterDevice(g_device);
-		}
-		break;
-	}
-	case kUnityGfxDeviceEventShutdown:
-	{
+			NvAPI_Status NvStatus = NvAPI_Initialize();
+			if (NvStatus == NVAPI_OK) {
+				DebugInUnity("Done: initialization of NvApi");
+				g_nvapiInitialized = true;
+			}
+			else {
+				DebugInUnity("Error: initialization of NvApi");
+			}
+			
+			NvStatus = NvAPI_D3D_RegisterDevice(g_device); 
+			if (NvStatus == NVAPI_OK) {
+				DebugInUnity("Done: Registering g_device");
+				g_deviceInitialized = true;
+			}
+			else {
+				DebugInUnity("Error: Registering g_device");
+			}
 
+		}
+		break;	
+	case kUnityGfxDeviceEventShutdown:
 		NvAPI_Unload();
-		break;
-	}
+		g_nvapiInitialized = false;
+		g_deviceInitialized = false;
+		break;	
 	}
 }
 static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
@@ -148,6 +181,7 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 
 	*/
 	// Device Context wird öfter benötigt daher als g_ variable
+	//g_device = nullptr;
 	g_device->GetImmediateContext(&g_deviceContext);
 
 	switch (eventID) {
@@ -162,7 +196,8 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 	case 2:
 		DisableVrsHelpers();		
 	}
-
+	
+	g_deviceContext->Release();
 
 
 }
@@ -186,17 +221,31 @@ static bool EnableVrsHelpers() {
 
 	enableParams.version = NV_VRS_HELPER_ENABLE_PARAMS_VER;
 	enableParams.ContentType = NV_VRS_CONTENT_TYPE_FOVEATED_RENDERING;
-	enableParams.RenderMode = NV_VRS_RENDER_MODE_MONO;
+	// Hier mal schauen evt Stereo
+	// Single Pass = Stereo
+	enableParams.RenderMode = NV_VRS_RENDER_MODE_STEREO;
 	// Hier gibt es mehrere presets, man kann die Bereiche aber auch anpassen... NicetoHave & Leicht zu machen
 	enableParams.sFoveatedRenderingDesc.version = NV_FOVEATED_RENDERING_DESC_VER;	
-	enableParams.sFoveatedRenderingDesc.ShadingRatePreset = NV_FOVEATED_RENDERING_SHADING_RATE_PRESET_HIGHEST_PERFORMANCE;
-	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_BALANCED;
+
+	// Custom oder preset
+	enableParams.sFoveatedRenderingDesc.ShadingRatePreset = NV_FOVEATED_RENDERING_SHADING_RATE_PRESET_CUSTOM;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.version = NV_FOVEATED_RENDERING_CUSTOM_FOVEATION_PATTERN_PRESET_DESC_VER;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.InnerMostRegionShadingRate = NV_PIXEL_X16_PER_RASTER_PIXEL;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.MiddleRegionShadingRate = NV_PIXEL_X0_CULL_RASTER_PIXELS;
+	enableParams.sFoveatedRenderingDesc.ShadingRateCustomPresetDesc.PeripheralRegionShadingRate = NV_PIXEL_X0_CULL_RASTER_PIXELS;
+
+	enableParams.sFoveatedRenderingDesc.FoveationPatternPreset = NV_FOVEATED_RENDERING_FOVEATION_PATTERN_PRESET_NARROW;
 
 	NvAPI_Status NvStatus = g_vrsHelper->Enable(g_deviceContext, &enableParams);
+	//if (g_deviceContext == nullptr) {
+	//	DebugInUnity("DeviceContext is nullptr");
+	//}
 	if (NvStatus == NVAPI_OK) {
+		
 		return true;
 	}
 	else {
+		DebugInUnity("Error: Enabling VRSHelpers");
 		return false;
 	}
 }
@@ -210,6 +259,7 @@ static bool DisableVrsHelpers() {
 		return true;
 	}
 	else {
+		DebugInUnity("Error Disable VRSHelpers");
 		return false;
 	}
 }
@@ -225,7 +275,7 @@ static bool InitGazeHandler() {
 	gazeHandlerInitParams.ppNvGazeHandler = &g_gazeHandler;
 
 	NvAPI_Status NvStatus = NvAPI_D3D_InitializeNvGazeHandler(g_device, &gazeHandlerInitParams);
-	if (NvStatus) {
+	if (NvStatus == NVAPI_OK) {
 		return true;
 	}
 	else {
@@ -262,19 +312,26 @@ static bool UpdateGazeData() {
 		return true;
 	}
 	else {
+		DebugInUnity("Error: Update Gaze Data");
 		return false;
 	}
 }
 static bool LatchGaze() {
 	NV_VRS_HELPER_LATCH_GAZE_PARAMS latchGazeParams = {};
-	latchGazeParams.version = NV_VRS_HELPER_ENABLE_PARAMS_VER;
+	latchGazeParams.version = NV_VRS_HELPER_LATCH_GAZE_PARAMS_VER;
 	NvAPI_Status NvStatus = g_vrsHelper->LatchGaze(g_deviceContext, &latchGazeParams);
 
-	if (NvStatus = NVAPI_OK) {
+	if (NvStatus == NVAPI_OK) {
 		return true;
 	}
 	else {
+		DebugInUnity("Error: Latch Gaze Data");
 		return false;
+	}
+}
+static void DebugInUnity(std::string message) {
+	if (g_debugCallback) {
+		g_debugCallback(message.c_str());
 	}
 }
 

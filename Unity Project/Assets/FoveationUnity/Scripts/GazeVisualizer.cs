@@ -62,25 +62,7 @@ public class GazeVisualizer : MonoBehaviour
         Debug.DrawRay(gazeOriginWorld, gazeDirectionWorld * 10f, Color.red);
                
     }
-    private void SetPositionAndScale(Ray ray)
-    {
-        RaycastHit hit;
-        var distance = cam.farClipPlane - 900f;
-        if (Physics.Raycast(ray.origin, ray.direction, out hit))
-        {
-            distance = hit.distance;
-        }
-               
-        var usedDirection = ray.origin.normalized;
-        transform.position = ray.origin + usedDirection * distance;
-
-        transform.localScale = Vector3.one * distance * 0.003f;
-
-        transform.forward = usedDirection.normalized;
-        
-
-    }
-
+  
     private void SetPositionAndScale(Vector3 ray_origin, Vector3 ray_direction)
     {
         RaycastHit hit;
@@ -91,9 +73,9 @@ public class GazeVisualizer : MonoBehaviour
         }
 
         var usedDirection = ray_direction.normalized;
-        transform.position = ray_origin + usedDirection * 10f;
+        transform.position = ray_origin + usedDirection * distance;
 
-        transform.localScale = Vector3.one * distance * 0.003f;
+        transform.localScale = Vector3.one * distance * 0.03f;
 
         transform.forward = usedDirection.normalized;
 
