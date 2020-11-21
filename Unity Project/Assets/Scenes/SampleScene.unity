@@ -478,8 +478,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad7630843e2b3774cacfacea5695671c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  innerShadingRate: 1
-  middleShadingRate: 5
+  innerShadingRate: 5
+  middleShadingRate: 11
   outerShadingRate: 11
   innerRadii: {x: 0.225, y: 0.2}
   middleRadii: {x: 0.5, y: 0.4}
@@ -1158,7 +1158,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2023021811}
   m_LocalRotation: {x: -0, y: 0.39169446, z: -0, w: 0.9200953}
-  m_LocalPosition: {x: 2.072, y: 0.41, z: -2.758}
+  m_LocalPosition: {x: 1.86, y: 0.41, z: -2.54}
   m_LocalScale: {x: 1, y: 2.2789, z: 1}
   m_Children:
   - {fileID: 2109263478}
