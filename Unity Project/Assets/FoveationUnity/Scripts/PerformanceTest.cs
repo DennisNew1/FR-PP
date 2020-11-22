@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using System;
 using System.IO;
 
@@ -14,14 +15,18 @@ public class PerformanceTest : MonoBehaviour
    
     private bool isMeasuring = false;  // Gibt an ob gemessen werden soll
     private float measureStartTime; //  Zeit seit der gemessen wurde
-    private float measureTime = 10.0f; // Zeit die gemessen werden soll
+    private float measureTime = 30.0f; // Zeit die gemessen werden soll
 
     private List<double> fpsMeasurements = new List<double>(); // List mite den gemessenen Werten
+
+    
+    public Text fpsText; 
 
     // Start is called before the first frame update
     void Start()
     {
-        
+        Application.targetFrameRate = 200;
+        QualitySettings.vSyncCount = 0;
     }
 
     // Update is called once per frame
@@ -33,6 +38,7 @@ public class PerformanceTest : MonoBehaviour
             isMeasuring = true;
             measureStartTime = Time.time;
             Debug.Log("Messung gestartet");
+            Debug.Log(QualitySettings.vSyncCount);
         }
         /*if (Input.GetKeyDown(KeyCode.S))
         {
@@ -53,7 +59,7 @@ public class PerformanceTest : MonoBehaviour
             fps = frameCount / dt;
             frameCount = 0;
             dt -= 1.0 / updateRate;
-
+            fpsText.text = " " + fps;
             if (isMeasuring == true)
             {
                 fpsMeasurements.Add(fps);
